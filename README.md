@@ -18,6 +18,14 @@ conflict.
 > the companion app running on Windows, clicking an account/role link will
 > not do anything.
 
+> **The first click is slow - that's expected.** The very first account/role
+> you open (after a reboot, or whenever the companion app's dedicated Edge
+> instance isn't already running) has to cold-start that instance before the
+> window can appear - typically a couple of seconds, longer on a machine
+> where antivirus scans the companion app's `.exe` on that first launch.
+> Every click after that, for the rest of the session, is fast. See "Known
+> limitations" below for the details.
+
 > **Open source, nothing hidden.** The companion app's entire source is
 > right here in this repo, under `native-host/` - there's no separate,
 > closed-source binary being downloaded from anywhere else. All it does is
@@ -32,16 +40,14 @@ conflict.
 
 Two pieces, both required:
 
-1. **Extension** - [Microsoft Edge Add-ons listing](https://microsoftedge.microsoft.com/addons)
-   *(not yet published - see "Running it locally" below to load it unpacked
-   in the meantime)*.
+1. **Extension** - [Microsoft Edge Add-ons listing](https://microsoftedge.microsoft.com/addons/detail/aws-login-helper/fgkidhckfhjhahiechlealkomjlipjhl).
 2. **Companion app** - [download the installer](https://github.com/penchala-services-inc/aws-login-helper-edge/releases/latest)
-   and run the `.msi`. It installs per-user - no admin rights, no UAC prompt.
+   and run the `AWS-Login-Helper-Host-Edge.msi`. It installs per-user - no admin rights, no UAC prompt.
 
 The extension alone can't open isolated windows without the companion app
-running, and the companion app needs to know the extension's ID (handled
-automatically once the extension is published; see "Running it locally" if
-you're using an unpacked copy).
+running, and the companion app already knows the published extension's ID
+(baked into `extension-id.txt`/the installer's `EXTENSIONID` default - see
+"Running it locally" only if you're testing an unpacked copy instead).
 
 ## Running it locally
 
@@ -86,11 +92,11 @@ per-user: copies the exe + `extension-id.txt` to
 messaging host with Edge, and (if the extension isn't already installed)
 opens the Edge Add-ons listing so it can be added with one click.
 
-**`EXTENSIONID` is empty by default in this build** (unlike the Chrome
-installer, which bakes in a real dev id) - there's no published Edge
-extension id yet. Once one exists, either edit the `Value` in
-`installer/AWS-Login-Helper-Host-Edge/Package.wxs` and rebuild, or supply it
-at install time the same way described next.
+**`EXTENSIONID` defaults to the real, published Edge Add-ons id**
+(`fgkidhckfhjhahiechlealkomjlipjhl`, same as `extension-id.txt`). If the
+listing's id ever changes, edit the `Value` in
+`installer/AWS-Login-Helper-Host-Edge/Package.wxs` and rebuild, or supply a
+different one at install time the same way described next.
 
 ### 3. Load the extension unpacked
 
