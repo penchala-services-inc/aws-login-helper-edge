@@ -36,7 +36,7 @@
 
   <Package Name="AWS Login Helper Edge"
             Manufacturer="Penchala Services Inc"
-            Version="1.0.0"
+            Version="1.0.2"
             UpgradeCode="2bf2d390-206a-431b-b612-d880d02c1577"
             Scope="perUser">
 
@@ -48,9 +48,10 @@
       Control Panel reads. If this still shows an old name after installing a rebuilt MSI,
       the old product wasn't actually replaced - see AllowSameVersionUpgrades below.
 
-      AllowSameVersionUpgrades="yes": this project deliberately keeps Version pinned at 1.0.0
-      across rebuilds (see Program.cs), but WiX's MajorUpgrade, by default, treats installing
-      the SAME version over itself as a downgrade and blocks it outright - which would mean a
+      AllowSameVersionUpgrades="yes": a rebuild doesn't always bump this Version (see
+      Program.cs's own Version constant, which this is kept in sync with by hand), but WiX's
+      MajorUpgrade, by default, treats installing the SAME version over itself as a downgrade
+      and blocks it outright - which would mean a
       rebuilt MSI (with this new Name, or any other change) would silently refuse to replace
       the old install, leaving the stale product (old name, old files) in Control Panel no
       matter how many times it's reinstalled. This flag tells MajorUpgrade to go ahead and
@@ -63,30 +64,19 @@
     <!--
       All-uppercase Id makes this a PUBLIC property - settable from the command line
       (msiexec /i AWS-Login-Helper-Host-Edge.msi EXTENSIONID=<id>) and readable by the
-      immediate CustomAction below in this same session. No default Value here (unlike the
-      Chrome build, there's no real published id yet to bake in) - give it one once the
-      extension is actually published to the Microsoft Edge Add-ons store.
-
-      Deliberately NO Value attribute at all, rather than Value="" - WiX v4 hard-errors
-      (WIX0006) on an explicit empty string, insisting the whole attribute be omitted
-      instead if there's nothing to default to. But a Property with neither a Value nor one
-      of Admin/Secure/Hidden is just dropped from the build entirely (WIX1006) - silently,
-      as a warning, not an error - which would make [EXTENSIONID] below resolve to nothing
-      predictable. Secure="yes" is what keeps it a real, defined property (empty unless
-      someone passes EXTENSIONID=... on the command line) without needing a Value.
-
-      Anyone installing locally against an unpacked/dev-loaded copy of the extension (which
-      gets its own, different, machine/path-specific id) can supply their own id here instead
-      of hand-editing extension-id.txt themselves; RegisterNativeHost passes whatever this
-      resolves to straight through to the register command, which ADDS it to extension-id.txt
-      alongside whatever ids are already there (see GetConfiguredExtensionIds in
-      Registration.cs) rather than replacing them - so a local override never breaks the
-      published extension on that same machine, and any number of allowed ids end up in the
-      native messaging manifest's allowed_origins list. Left unset (the common case today),
-      it's a no-op: the register command falls back to whatever's already on file, or the
-      placeholder if nothing is configured yet.
+      immediate CustomAction below in this same session. Defaults to the real, published
+      Microsoft Edge Add-ons id (see native-host/extension-id.txt, which already carries the
+      same value) - update both if the listing's id ever changes. Anyone installing locally
+      against an unpacked/dev-loaded copy of the extension (which gets its own, different,
+      machine/path-specific id) can supply their own id here instead of hand-editing
+      extension-id.txt themselves; RegisterNativeHost passes whatever this resolves to
+      straight through to the register command, which ADDS it to extension-id.txt alongside
+      whatever ids are already there (see GetConfiguredExtensionIds in Registration.cs)
+      rather than replacing them - so a local override never breaks the published extension
+      on that same machine, and any number of allowed ids end up in the native messaging
+      manifest's allowed_origins list.
     -->
-    <Property Id="EXTENSIONID" Secure="yes" />
+    <Property Id="EXTENSIONID" Value="fgkidhckfhjhahiechlealkomjlipjhl" />
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="INSTALLFOLDER" Name="AWS-Login-Helper-Host-Edge">

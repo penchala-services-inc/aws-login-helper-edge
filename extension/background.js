@@ -97,6 +97,21 @@ function getNativePort() {
   nativePort.onMessage.addListener((response) => {
     const requestId = response && response.__requestId;
     if (requestId == null) {
+      // Not a response to anything we asked for - either an unsolicited push (the only kind
+      // today is 'serviceVisited', see CdpClient.RegisterProfileWindowAsync's own doc comment
+      // on the host side for why these exist: the dedicated isolated-window Edge instance has
+      // no extension loaded into it at all, so the native host is the only thing that can
+      // ever see a service the user opened by hand in there, e.g. ctrl-clicking "S3" from
+      // AWS's own console nav into a new tab) or genuinely unknown.
+      if (response && response.action === 'serviceVisited') {
+        const { accountId, serviceName, url } = response;
+        if (accountId && serviceName && url) {
+          addRecentServiceLinkToStorage(accountId, serviceName, url)
+            .then(() => log('Recorded service visited from isolated window:', accountId, serviceName, url))
+            .catch((err) => console.error('Failed to record serviceVisited push:', err));
+        }
+        return;
+      }
       log('Native host message with no __requestId (ignored):', response);
       return;
     }
@@ -304,14 +319,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           // underlying Chromium engine entirely starting Chrome 137, June 2025, and Edge
           // inherited the same removal). Both are shown by a script the native host injects
           // directly via the Chrome DevTools Protocol - see CdpClient.SetCookiesAndNavigateAsync
-          // and CdpClient.StartBannerWatcher for the full mechanism (the watcher is what
-          // keeps it showing up on LATER navigations within that same window too, not just
-          // this first one).
+          // and CdpClient.RegisterProfileWindowAsync for the full mechanism (the latter is what
+          // keeps it showing up on LATER navigations, or brand new tabs, within that same
+          // window too, not just this first one).
+          //
+          // accountId/roleName ride along here too, separately from displayLabel's own
+          // concatenated string, purely so the native host can hand them straight back in a
+          // LATER unsolicited 'serviceVisited' push (see RegisterProfileWindowAsync's doc
+          // comment) without having to re-parse them out of displayLabel itself.
           const response = await sendNative({
             action: 'syncAndOpen',
             profileKey,
             displayLabel,
             accountName: account_name,
+            accountId: account_id,
+            roleName: role_name,
             url: link,
             openIn: openIn || 'Window',
             cookies,
@@ -338,6 +360,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             const serviceName = extractServiceName(message.url);
             await addRecentServiceLinkToStorage(message.account_id, serviceName, message.url);
           }
+          sendResponse({ ok: true });
+          break;
+        }
+
+        case 'openWelcomePage': {
+          // Asked for by content.js's "companion app not found" dialog - content scripts
+          // can't open this extension's own pages themselves.
+          chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
           sendResponse({ ok: true });
           break;
         }

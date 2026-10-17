@@ -6,248 +6,93 @@ account. A Microsoft Edge port of the original Firefox "AWS Login Helper"
 extension, sitting alongside the `aws-login-helper-chrome` sibling folder in
 this repo. Edge is Chromium-based, so the extension code is identical to the
 Chrome build's; what differs is entirely plumbing (own registry hive, own
-extension store, launches `msedge.exe` not `chrome.exe`). This is a fully
+extension store, launches `msedge.exe` not `chrome.exe` - see
+[development.md](development.md) for the full list). This is a fully
 separate, parallel build - nothing is shared at runtime with
 `aws-login-helper-chrome`, so both can be installed side by side without
 conflict.
 
-> **Windows only, for now.** The companion app (the piece that actually
-> opens the isolated windows) is a native Windows program (`.exe` + a
-> per-user `.msi` installer) - it does not run on macOS or Linux. The
-> extension itself will install fine on any OS Edge supports, but without
-> the companion app running on Windows, clicking an account/role link will
-> not do anything.
-
-> **The first click is slow - that's expected.** The very first account/role
-> you open (after a reboot, or whenever the companion app's dedicated Edge
-> instance isn't already running) has to cold-start that instance before the
-> window can appear - typically a couple of seconds, longer on a machine
-> where antivirus scans the companion app's `.exe` on that first launch.
-> Every click after that, for the rest of the session, is fast. See "Known
-> limitations" below for the details.
+**We now support both Windows and macOS.** The companion app (the piece
+that actually opens the isolated windows) is a native program: a per-user
+`.msi` installer on Windows, and an `install.sh` tarball on macOS
+(`native-host-mac/` + `package-mac/`; Apple Silicon and Intel). It does not
+run on Linux. The extension itself will install fine on any OS Edge
+supports, but without the companion app, clicking an account/role link will
+not do anything.
 
 > **Open source, nothing hidden.** The companion app's entire source is
 > right here in this repo, under `native-host/` - there's no separate,
 > closed-source binary being downloaded from anywhere else. All it does is
 > launch a separate, dedicated Edge instance for each AWS account/role and
 > copy your AWS SSO session cookie into it, so you don't have to sign in
-> again (see "Development" below for exactly how). No telemetry, no data
-> leaving your machine to anywhere other than AWS itself. Read the code
-> yourself before you install it if you'd like:
+> again. No telemetry, no data leaving your machine to anywhere other than
+> AWS itself. Read the code yourself before you install it if you'd like:
 > https://github.com/penchala-services-inc/aws-login-helper-edge
+
+## Screenshots
+
+The AWS access portal, with the "Isolated (Window)" links next to each
+account/role and the Recent Logins & Services panel at the top:
+
+![AWS access portal with isolated-window links and Recent Logins & Services](images/portal_new.png)
+
+An isolated console window, already signed in, with the account/role banner
+pinned to the bottom:
+
+![AWS console with the account/role banner](images/console%20page.png)
+
+The extension's options page - default console region, companion app
+status, and the list of isolated profiles:
+
+![Extension options page with isolated profiles](images/options%20with%20profiles.png)
 
 ## Install
 
 Two pieces, both required:
 
 1. **Extension** - [Microsoft Edge Add-ons listing](https://microsoftedge.microsoft.com/addons/detail/aws-login-helper/fgkidhckfhjhahiechlealkomjlipjhl).
-2. **Companion app** - [download the installer](https://github.com/penchala-services-inc/aws-login-helper-edge/releases/latest)
-   and run the `AWS-Login-Helper-Host-Edge.msi`. It installs per-user - no admin rights, no UAC prompt.
+2. **Companion app**:
+   - Windows - [download the installer](https://github.com/penchala-services-inc/aws-login-helper-edge/releases/latest)
+     and run the `AWS-Login-Helper-Host-Edge.msi`. It installs per-user - no admin rights, no UAC prompt.
+   - macOS - download the `aws-login-helper-host-edge-mac-osx-arm64.tar.gz` (Apple Silicon) or
+     `...-osx-x64.tar.gz` (Intel) file from the same
+     [release](https://github.com/penchala-services-inc/aws-login-helper-edge/releases/latest),
+     extract it, and run `bash install.sh`. The app isn't signed by Apple, so macOS asks you to
+     approve it a few times - the extension's welcome page walks through each step, and
+     `package-mac/README.md` has the details.
 
 The extension alone can't open isolated windows without the companion app
 running, and the companion app already knows the published extension's ID
 (baked into `extension-id.txt`/the installer's `EXTENSIONID` default - see
-"Running it locally" only if you're testing an unpacked copy instead).
+[development.md](development.md) only if you're testing an unpacked copy
+instead).
 
-## Running it locally
+> **The first click is slow - that's expected.** The very first account/role
+> you open (after a reboot, or whenever the companion app's dedicated Edge
+> instance isn't already running) has to cold-start that instance before the
+> window can appear - typically a couple of seconds, longer on a machine
+> where antivirus scans the companion app's `.exe` on that first launch.
+> Every click after that, for the rest of the session, is fast.
 
-For building from source, or testing before the extension is published.
+## How it works
 
-### 1. Build the native host
+The extension watches the AWS access portal and adds an "Isolated (Window)"
+link next to every account/role. Clicking one hands your current AWS SSO
+session cookie to the companion app, which opens that account/role in its
+own dedicated, isolated browser window - already signed in - and labels it
+with a colored banner (account id, account name, role) so it's always clear
+which account you're in. Opening a service by hand inside that window (e.g.
+clicking into S3) gets reported back too, so it shows up under "Recent
+Logins & Services" on the portal page next time you look.
 
-Requires the .NET 8 SDK on a Windows machine.
+For the full mechanics - why a second browser instance, how a click flows
+end to end, how the banner gets injected - see [development.md](development.md).
 
-```
-cd native-host
-dotnet publish -c Release
-```
+## Other AWS Login Helper builds
 
-Produces `native-host/bin/Release/net8.0/win-x64/publish/AWS-Login-Helper-Host-Edge.exe`,
-a single self-contained `.exe`. Try it by hand:
+- [Firefox (original)](https://github.com/penchala-services-inc/aws-login-helper-firefox) - uses Firefox containers instead of a companion app.
+- [Chrome](https://github.com/penchala-services-inc/aws-login-helper-chrome) - the Google Chrome port, same approach as this one.
 
-```
-AWS-Login-Helper-Host-Edge.exe --version
-AWS-Login-Helper-Host-Edge.exe --register
-```
+## Releases
 
-`--register` writes `native-messaging-host.json` next to itself and a
-`HKEY_CURRENT_USER\Software\Microsoft\Edge\NativeMessagingHosts\com.penchala_services_inc.awsloginhelper_edge`
-value pointing at it - both without admin rights. You can also sanity-check
-the exe's stdio framing directly, bypassing Edge entirely, with
-`test-native-host.ps1`.
-
-### 2. Build and run the installer
-
-Requires the WiX v4 CLI (`dotnet tool install --global wix`) plus the .NET SDK.
-
-```
-cd installer/AWS-Login-Helper-Host-Edge
-dotnet build -c Release
-```
-
-Produces `installer/AwsLoginHelperNativeEdge/bin/Release/AWS-Login-Helper-Host-Edge.msi`.
-Double-clicking it (or `msiexec /i AWS-Login-Helper-Host-Edge.msi`) installs
-per-user: copies the exe + `extension-id.txt` to
-`%LocalAppData%\AWS-Login-Helper-Host-Edge\NativeHost\`, registers the native
-messaging host with Edge, and (if the extension isn't already installed)
-opens the Edge Add-ons listing so it can be added with one click.
-
-**`EXTENSIONID` defaults to the real, published Edge Add-ons id**
-(`fgkidhckfhjhahiechlealkomjlipjhl`, same as `extension-id.txt`). If the
-listing's id ever changes, edit the `Value` in
-`installer/AWS-Login-Helper-Host-Edge/Package.wxs` and rebuild, or supply a
-different one at install time the same way described next.
-
-### 3. Load the extension unpacked
-
-Edge will run any folder as an extension in Developer mode - no store
-review needed to test:
-
-- Go to `edge://extensions`, turn on **Developer mode**, click
-  **Load unpacked**, and select this project's `extension/` folder.
-- Edge assigns it its own id (different from the published one) - copy it
-  from the extension's card.
-- Register that id with the native host - either at install time:
-  ```
-  msiexec /i AWS-Login-Helper-Host-Edge.msi EXTENSIONID=<your unpacked extension's id>
-  ```
-  or, if already installed, without reinstalling:
-  ```
-  "%LocalAppData%\AWS-Login-Helper-Host-Edge\NativeHost\AWS-Login-Helper-Host-Edge.exe" --register <your unpacked extension's id>
-  ```
-  Either way this is additive - `extension-id.txt` keeps one id per line, so
-  a locally-loaded copy and the published extension can both work side by
-  side on the same machine without breaking each other.
-
-### 4. Verify
-
-- `edge://extensions` -> the extension is installed and enabled.
-- Open the extension's popup -> "Check companion app" reports OK.
-- Sign into the AWS IIC portal, click an "Isolated (Window)" link -> a
-  second, separate Edge window opens, already signed into that
-  account/role. `edge://version` inside it shows a different profile path
-  (under `AWS-Login-Helper-Host-Edge\EdgeProfiles\...`) than your normal Edge -
-  that's expected (see "Development").
-
-## Development
-
-### What's different from the Chrome build
-
-- **Launches Edge, not Chrome.** `EdgeManager.FindEdgeExe()` looks in
-  `%ProgramFiles%\Microsoft\Edge\Application\msedge.exe`,
-  `%ProgramFiles(x86)%\...`, `%LocalAppData%\Microsoft\Edge\Application\msedge.exe`,
-  and the `App Paths` registry key, in that order.
-- **Its own registry hive** -
-  `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.penchala_services_inc.awsloginhelper_edge`,
-  not Chrome's `Software\Google\Chrome\...` key.
-- **Its own install folder** - `%LocalAppData%\AWS-Login-Helper-Host-Edge\`,
-  separate from the Chrome build's `AWS-Login-Helper-Host-Chrome\`.
-- **Its own extension store** - the Microsoft Edge Add-ons store, not the
-  Chrome Web Store.
-- **`allowed_origins` still uses the `chrome-extension://` scheme** - not a
-  bug, Edge extensions use the same URI scheme Chrome does; there's no
-  separate `edge-extension://` scheme.
-
-Everything else - the CDP-based banner/title injection, the cold-start
-prewarm mechanism, and the additive multi-extension-id support - was
-ported unchanged in logic from the Chrome build, since none of it is
-Chrome-specific.
-
-### The three pieces
-
-```
-extension/     Edge MV3 extension - runs in the user's normal, everyday Edge.
-                Watches the AWS IIC/SSO portal, and asks the native host to
-                open each account/role in its own isolated window.
-native-host/   AWS-Login-Helper-Host-Edge.exe - a small, self-contained C#
-                program that Edge launches via Native Messaging. It owns a
-                SEPARATE, dedicated Edge instance where each AWS role gets
-                its own profile, and uses the Chrome DevTools Protocol (CDP,
-                which Edge implements identically since it's a Chromium
-                fork) to copy the SSO cookie into the right one, open it,
-                and label it.
-installer/     A per-user MSI (WiX v4) that installs the native host and
-                registers it with Edge - no admin rights needed anywhere.
-```
-
-### Why a *separate* Edge instance, not the user's real profiles
-
-Edge's remote debugging port (what CDP needs to set cookies in a profile
-that isn't the one the extension runs in) can only be turned on when an
-Edge **process** starts - it can't be attached retroactively to the user's
-already-running everyday Edge, and Edge collapses every profile under one
-`--user-data-dir` into a single process anyway, so a flag passed on a second
-launch gets silently forwarded to (and ignored by) the already-running one.
-
-The native host sidesteps both problems by launching Edge pointed at its
-**own** `--user-data-dir` (`%LocalAppData%\AWS-Login-Helper-Host-Edge\EdgeProfiles`),
-completely separate from the user's normal profile data. Every AWS
-account/role becomes its own `--profile-directory` inside it - its own
-cookie jar, its own window, persists across restarts, functionally
-identical to a Firefox container.
-
-### How a click flows end to end
-
-1. `content.js` (running in the user's normal Edge) finds each account/role
-   link on the IIC portal page and adds an "Isolated (Window)" link next to it.
-2. Clicking it sends `openAccountRole` to `background.js`, which reads the
-   current `.awsapps.com` cookies and hands them to the native host over a
-   long-lived native-messaging connection.
-3. The native host makes sure the dedicated Edge instance is running, opens
-   (or reuses) that role's `--profile-directory` on a tab, sets the SSO
-   cookie(s) over that tab's own CDP WebSocket (`Network.setCookie`), then
-   navigates it straight to the real AWS console URL.
-4. The user sees a normal Edge window, already authenticated, for that
-   specific account/role.
-
-### How the account/role banner and title are shown
-
-A colored banner pinned to the bottom of the window (`account_id |
-account_name | role_name`, red for Prod, green for NonProd/sandbox/test/dev,
-dark blue otherwise) plus the account/role prefixed onto the tab title. This
-is injected directly by the native host over the same CDP connection - a
-small script evaluated in the page (`CdpClient.BuildConsoleBannerScript`),
-right after the cookie sync. There is no extension loaded in the dedicated
-instance at all (Chromium removed the `--load-extension` flag entirely
-starting Chrome/Edge 137, June 2025, which is what an earlier version of
-this relied on), so a lightweight watcher (`CdpClient.StartBannerWatcher`)
-polls for navigation and re-injects the script every time the user browses
-to a new console page in that window, keeping the banner and title showing
-up consistently without holding a debugger session attached the whole time
-(which was tried first and caused AWS's own session-refresh flow to kick the
-user out - see the comments in `CdpClient.cs` for the full history).
-
-Session expiry is shown in two places, both cookie-driven: the portal page
-(`content.js`, reading the `x-amz-sso_authn` cookie) and the console banner
-(the native host, reading the `aws-creds` cookie over the same CDP
-connection right after the sync).
-
-### Multiple isolated profiles
-
-Each account/role's dedicated Edge profile can be listed and deleted from
-the extension's options page (`edge://extensions` -> Details -> Extension
-options) - useful for cleaning up old/unused ones. Deleting removes that
-profile's own folder (cookies, session) under `EdgeProfiles\`; nothing else
-is affected.
-
-## Known limitations / things to revisit
-
-- **Cold-start placeholder window still shows in the taskbar and Alt+Tab
-  switcher.** The off-screen positioning trick
-  (`--window-position=-32000,-32000 --window-size=1,1`) hides it visually
-  but Windows still grants it a normal taskbar button and Alt+Tab entry. A
-  real fix would need a Win32 `WS_EX_TOOLWINDOW` style on the window handle -
-  not pursued, same as the Chrome build.
-- **Cookie sync is `.awsapps.com` cookies only** - if AWS ever moves session
-  state elsewhere, this needs updating.
-- **First role opened after a reboot** takes an extra second or two, since
-  that's when the dedicated Edge instance has to actually start.
-- **No uninstall of the extension itself** - the MSI only manages the
-  companion app. Removing the extension is done from `edge://extensions`
-  like any other extension.
-- **Edge must be installed** somewhere `EdgeManager.FindEdgeExe()` can find
-  it (Program Files, per-user `%LocalAppData%`, or the registered
-  "App Paths" registry key).
-- **Intermittent CDP port-check delays** can happen on a machine where
-  antivirus/EDR intercepts the native host's loopback HTTP calls - needs a
-  Defender/EDR exclusion from IT, not a code fix, if it shows up.
+See [releases.md](releases.md) for the version history.

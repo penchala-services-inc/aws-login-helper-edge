@@ -21,7 +21,7 @@ namespace AwsLoginHelperHost
     /// </summary>
     public static class Program
     {
-        public const string Version = "1.0.0";
+        public const string Version = "1.0.2";
 
         public static int Main(string[] args)
         {
@@ -188,7 +188,7 @@ namespace AwsLoginHelperHost
                 Logger.IsDebugEnabled = (bool?)request["enableDebug"] ?? false;
 
                 Logger.Log($"---- request start: {action} ----");
-                response = Dispatch(request).GetAwaiter().GetResult();
+                response = Dispatch(request, stdout).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
@@ -221,7 +221,7 @@ namespace AwsLoginHelperHost
             }
         }
 
-        private static async Task<JObject> Dispatch(JObject request)
+        private static async Task<JObject> Dispatch(JObject request, Stream stdout)
         {
             string action = (string)request["action"];
             var edge = new EdgeManager();
@@ -236,7 +236,7 @@ namespace AwsLoginHelperHost
                     return new JObject { ["ok"] = true };
 
                 case "syncAndOpen":
-                    return await HandleSyncAndOpen(edge, request);
+                    return await HandleSyncAndOpen(edge, request, stdout);
 
                 case "syncAllProfiles":
                     return await HandleSyncAllProfiles(edge, request);
@@ -284,7 +284,7 @@ namespace AwsLoginHelperHost
             return cleaned.Length > 0 ? cleaned : "unknown-profile";
         }
 
-        private static async Task<JObject> HandleSyncAndOpen(EdgeManager edge, JObject request)
+        private static async Task<JObject> HandleSyncAndOpen(EdgeManager edge, JObject request, Stream stdout)
         {
             string profileKey = SanitizeProfileKey((string)request["profileKey"]);
             // account_id | account_name | role_name - the full banner label. RecordProfileLabel
@@ -300,6 +300,15 @@ namespace AwsLoginHelperHost
             // full displayLabel. Falls back to the full label if an older extension build
             // ever calls us without it.
             string titleLabel = (string)request["accountName"];
+            // accountId/roleName: only needed so CdpClient.RegisterProfileWindowAsync can
+            // attribute a LATER service-visited push (see that method's own doc comment) back
+            // to the right chrome.storage.local["recentServicesByAccount"][accountId] entry -
+            // not read anywhere else in this method. Falls back to "" (never null) so a push
+            // from an older extension build that doesn't send these yet degrades to a silently
+            // useless-but-harmless report rather than a null-reference failure deep in the
+            // watcher loop.
+            string accountId = (string)request["accountId"] ?? string.Empty;
+            string roleName = (string)request["roleName"] ?? string.Empty;
             string url = (string)request["url"];
             var cookies = ParseCookies(request);
 
@@ -313,12 +322,12 @@ namespace AwsLoginHelperHost
             var (wsUrl, port, targetId) = await edge.EnsureTabForProfileAsync(profileKey);
             await edge.Cdp.SetCookiesAndNavigateAsync(wsUrl, cookies, url, displayLabel, titleLabel);
 
-            // Covers every LATER full navigation within this same tab - SetCookiesAndNavigateAsync
-            // above only carries the banner/title through the very first landing. See
-            // CdpClient.StartBannerWatcher's own doc comment for why this is a polling design.
-            // Best-effort: re-reads the tab's own current url (rather than reusing the pre-
-            // redirect "url" variable above) so the watcher's "last seen" baseline matches
-            // whatever host AWS's federation chain actually settled on.
+            // Covers every LATER full navigation (or brand new tab - see that method's own doc
+            // comment) within this profile's window - SetCookiesAndNavigateAsync above only
+            // carries the banner/title through the very first landing. Best-effort: re-reads
+            // the tab's own current url (rather than reusing the pre-redirect "url" variable
+            // above) so the watcher's "last seen" baseline matches whatever AWS's federation
+            // chain actually settled on.
             string settledUrl = url;
             try
             {
@@ -328,9 +337,10 @@ namespace AwsLoginHelperHost
             }
             catch (Exception ex)
             {
-                Logger.LogError($"HandleSyncAndOpen: failed to read settled url before starting banner watcher (non-fatal) - {ex}");
+                Logger.LogError($"HandleSyncAndOpen: failed to read settled url before registering the profile window (non-fatal) - {ex}");
             }
-            edge.Cdp.StartBannerWatcher(port, targetId, displayLabel, titleLabel, settledUrl);
+            await edge.Cdp.RegisterProfileWindowAsync(
+                port, targetId, stdout, profileKey, accountId, titleLabel, roleName, displayLabel, titleLabel, settledUrl);
 
             return new JObject { ["ok"] = true, ["profileKey"] = profileKey };
         }
