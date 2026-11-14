@@ -36,7 +36,7 @@
 
   <Package Name="AWS Login Helper Edge"
             Manufacturer="Penchala Services Inc"
-            Version="1.0.2"
+            Version="1.0.3"
             UpgradeCode="2bf2d390-206a-431b-b612-d880d02c1577"
             Scope="perUser">
 
